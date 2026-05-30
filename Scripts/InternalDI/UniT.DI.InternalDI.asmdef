@@ -1,0 +1,7 @@
+{
+  "name": "UniT.DI.InternalDI",
+  "references": [
+    "UniT.DI",
+    "UniT.Extensions"
+  ]
+}

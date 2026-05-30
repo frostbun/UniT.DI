@@ -2,6 +2,7 @@
 namespace UniT.DI
 {
     using System;
+    using System.Collections.Generic;
     using System.Diagnostics.CodeAnalysis;
     using UnityEngine;
 
@@ -15,9 +16,9 @@ namespace UniT.DI
 
         public T Resolve<T>();
 
-        public object[] ResolveAll(Type type);
+        public IEnumerable<object> ResolveAll(Type type);
 
-        public T[] ResolveAll<T>();
+        public IEnumerable<T> ResolveAll<T>();
 
         public object Instantiate(Type type, params object?[] @params);
 

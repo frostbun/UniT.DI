@@ -1,21 +1,3 @@
 {
-  "name": "UniT.DI",
-  "rootNamespace": "UniT.DI",
-  "references": [
-    "UniT.Extensions",
-    "Zenject",
-    "VContainer"
-  ],
-  "versionDefines": [
-    {
-      "name": "com.svermeulen.extenject",
-      "expression": "",
-      "define": "UNIT_ZENJECT"
-    },
-    {
-      "name": "jp.hadashikick.vcontainer",
-      "expression": "",
-      "define": "UNIT_VCONTAINER"
-    }
-  ]
+  "name": "UniT.DI"
 }

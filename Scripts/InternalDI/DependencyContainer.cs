@@ -5,6 +5,7 @@ namespace UniT.DI
     using System.Collections.Generic;
     using System.Collections.ObjectModel;
     using System.Diagnostics.CodeAnalysis;
+    using System.Diagnostics.Contracts;
     using System.Linq;
     using System.Reflection;
     using System.Runtime.CompilerServices;
@@ -35,9 +36,9 @@ namespace UniT.DI
 
         T IDependencyContainer.Resolve<T>() => this.Get<T>();
 
-        object[] IDependencyContainer.ResolveAll(Type type) => this.GetAll(type);
+        IEnumerable<object> IDependencyContainer.ResolveAll(Type type) => this.GetAll(type);
 
-        T[] IDependencyContainer.ResolveAll<T>() => this.GetAll<T>();
+        IEnumerable<T> IDependencyContainer.ResolveAll<T>() => this.GetAll<T>();
 
         object IDependencyContainer.Instantiate(Type type, params object?[] @params) => this.Instantiate(type, @params);
 
@@ -51,12 +52,12 @@ namespace UniT.DI
 
         #endregion
 
+        #region Manual Add
+
         public void Add(Type type, object instance)
         {
             this.cache.GetOrAdd(type).Add(instance);
         }
-
-        #region Manual Add
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Add(object instance)
@@ -129,9 +130,9 @@ namespace UniT.DI
             return false;
         }
 
-        public object[] GetAll(Type type)
+        public IEnumerable<object> GetAll(Type type)
         {
-            return this.cache.GetOrDefault(type)?.ToArray() ?? Array.Empty<object>();
+            return this.cache.GetOrDefault(type) ?? Enumerable.Empty<object>();
         }
 
         #endregion
@@ -180,6 +181,10 @@ namespace UniT.DI
                 }
                 switch (parameterType)
                 {
+                    case { IsArray: true }:
+                    {
+                        return GetArray(parameterType.GetElementType()!);
+                    }
                     case { IsGenericType: true, IsInterface: true } when SupportedInterfaces.Contains(parameterType.GetGenericTypeDefinition()):
                     {
                         return GetArray(parameterType.GetGenericArguments()[0]);
@@ -187,10 +192,6 @@ namespace UniT.DI
                     case { IsGenericType: true } when SupportedConcreteTypes.Contains(parameterType.GetGenericTypeDefinition()):
                     {
                         return Activator.CreateInstance(parameterType, GetArray(parameterType.GetGenericArguments()[0]));
-                    }
-                    case { IsArray: true }:
-                    {
-                        return GetArray(parameterType.GetElementType()!);
                     }
                     default:
                     {
@@ -203,7 +204,7 @@ namespace UniT.DI
 
             Array GetArray(Type type)
             {
-                var instances = this.GetAll(type);
+                var instances = this.GetAll(type).ToArray();
                 var array     = Array.CreateInstance(type, instances.Length);
                 instances.CopyTo(array, 0);
                 return array;
@@ -245,7 +246,7 @@ namespace UniT.DI
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T[] GetAll<T>() => this.GetAll(typeof(T)).Cast<T>().ToArray();
+        public IEnumerable<T> GetAll<T>() => this.GetAll(typeof(T)).Cast<T>();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public T Instantiate<T>(params object?[] @params) => (T)this.Instantiate(typeof(T), @params);
@@ -255,58 +256,101 @@ namespace UniT.DI
         #region Add From
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddFromResource<T>(string path) where T : Object => this.Add(LoadResource<T>(path));
+        public void AddFromResource<T>(string path) where T : Object
+        {
+            this.Add(LoadResource<T>(path));
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddInterfacesFromResource<T>(string path) where T : Object => this.AddInterfaces(LoadResource<T>(path));
+        public void AddInterfacesFromResource<T>(string path) where T : Object
+        {
+            this.AddInterfaces(LoadResource<T>(path));
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddInterfacesAndSelfFromResource<T>(string path) where T : Object => this.AddInterfacesAndSelf(LoadResource<T>(path));
+        public void AddInterfacesAndSelfFromResource<T>(string path) where T : Object
+        {
+            this.AddInterfacesAndSelf(LoadResource<T>(path));
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddFromComponentInNewPrefabResource<T>(string path) where T : Component => this.Add(InstantiatePrefabResource<T>(path));
+        public void AddFromComponentInNewPrefabResource<T>(string path) where T : Component
+        {
+            this.Add(Object.Instantiate(LoadResource<T>(path)));
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddInterfacesFromComponentInNewPrefabResource<T>(string path) where T : Component => this.AddInterfaces(InstantiatePrefabResource<T>(path));
+        public void AddInterfacesFromComponentInNewPrefabResource<T>(string path) where T : Component
+        {
+            this.AddInterfaces(Object.Instantiate(LoadResource<T>(path)));
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddInterfacesAndSelfFromComponentInNewPrefabResource<T>(string path) where T : Component => this.AddInterfacesAndSelf(InstantiatePrefabResource<T>(path));
+        public void AddInterfacesAndSelfFromComponentInNewPrefabResource<T>(string path) where T : Component
+        {
+            this.AddInterfacesAndSelf(Object.Instantiate(LoadResource<T>(path)));
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddFromComponentInNewPrefab<T>(T prefab) where T : Component => this.Add(InstantiatePrefab(prefab));
+        public void AddFromComponentInNewPrefab<T>(T prefab) where T : Component
+        {
+            this.Add(Object.Instantiate(prefab));
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddInterfacesFromComponentInNewPrefab<T>(T prefab) where T : Component => this.AddInterfaces(InstantiatePrefab(prefab));
+        public void AddInterfacesFromComponentInNewPrefab<T>(T prefab) where T : Component
+        {
+            this.AddInterfaces(Object.Instantiate(prefab));
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddInterfacesAndSelfFromComponentInNewPrefab<T>(T prefab) where T : Component => this.AddInterfacesAndSelf(InstantiatePrefab(prefab));
+        public void AddInterfacesAndSelfFromComponentInNewPrefab<T>(T prefab) where T : Component
+        {
+            this.AddInterfacesAndSelf(Object.Instantiate(prefab));
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddFromComponentInHierarchy<T>() where T : Object => this.Add(Object.FindObjectsByType<T>(FindObjectsSortMode.None).Single());
+        public void AddFromComponentInHierarchy<T>() where T : Component
+        {
+            this.Add(Object.FindObjectsByType<T>(FindObjectsSortMode.None).Single());
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddInterfacesFromComponentInHierarchy<T>() where T : Object => this.AddInterfaces(Object.FindObjectsByType<T>(FindObjectsSortMode.None).Single());
+        public void AddInterfacesFromComponentInHierarchy<T>() where T : Component
+        {
+            this.AddInterfaces(Object.FindObjectsByType<T>(FindObjectsSortMode.None).Single());
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddInterfacesAndSelfFromComponentInHierarchy<T>() where T : Object => this.AddInterfacesAndSelf(Object.FindObjectsByType<T>(FindObjectsSortMode.None).Single());
+        public void AddInterfacesAndSelfFromComponentInHierarchy<T>() where T : Component
+        {
+            this.AddInterfacesAndSelf(Object.FindObjectsByType<T>(FindObjectsSortMode.None).Single());
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddAllFromComponentInHierarchy<T>() where T : Object => Object.FindObjectsByType<T>(FindObjectsSortMode.None).ForEach(this.Add);
+        public void AddAllFromComponentInHierarchy<T>() where T : Component
+        {
+            Object.FindObjectsByType<T>(FindObjectsSortMode.None).ForEach(this.Add);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddAllInterfacesFromComponentInHierarchy<T>() where T : Object => Object.FindObjectsByType<T>(FindObjectsSortMode.None).ForEach(this.AddInterfaces);
+        public void AddAllInterfacesFromComponentInHierarchy<T>() where T : Component
+        {
+            Object.FindObjectsByType<T>(FindObjectsSortMode.None).ForEach(this.AddInterfaces);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddAllInterfacesAndSelfFromComponentInHierarchy<T>() where T : Object => Object.FindObjectsByType<T>(FindObjectsSortMode.None).ForEach(this.AddInterfacesAndSelf);
+        public void AddAllInterfacesAndSelfFromComponentInHierarchy<T>() where T : Component
+        {
+            Object.FindObjectsByType<T>(FindObjectsSortMode.None).ForEach(this.AddInterfacesAndSelf);
+        }
 
+        [Pure]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static T LoadResource<T>(string path) where T : Object => Resources.Load<T>(path) ?? throw new ArgumentOutOfRangeException(nameof(path), path, $"Failed to load {path}");
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static T InstantiatePrefab<T>(T prefab) where T : Component => Object.Instantiate(prefab).DontDestroyOnLoad();
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static T InstantiatePrefabResource<T>(string path) where T : Component => InstantiatePrefab(LoadResource<GameObject>(path).GetComponentOrThrow<T>());
+        private static T LoadResource<T>(string path) where T : Object
+        {
+            return Resources.Load<T>(path).NullIfDestroyed() ?? throw new ArgumentOutOfRangeException(nameof(path), path, $"{path} not found in resources");
+        }
 
         #endregion
     }
