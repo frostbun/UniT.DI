@@ -32,9 +32,9 @@ namespace VContainer
 
             T IDependencyContainer.Resolve<T>() => this.container.Resolve<T>();
 
-            IEnumerable<object> IDependencyContainer.ResolveAll(Type type) => ((IEnumerable)this.container.Resolve(typeof(IEnumerable<>).MakeGenericType(type))).Cast<object>();
+            IReadOnlyList<object> IDependencyContainer.ResolveAll(Type type) => ((IEnumerable)this.container.Resolve(typeof(IEnumerable<>).MakeGenericType(type))).Cast<object>().ToArray();
 
-            IEnumerable<T> IDependencyContainer.ResolveAll<T>() => this.container.Resolve<IEnumerable<T>>();
+            IReadOnlyList<T> IDependencyContainer.ResolveAll<T>() => this.container.Resolve<IReadOnlyList<T>>();
 
             object IDependencyContainer.Instantiate(Type type, params object?[] @params) => this.container.Instantiate(type, @params);
 

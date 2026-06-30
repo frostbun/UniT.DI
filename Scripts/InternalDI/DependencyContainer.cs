@@ -17,7 +17,7 @@ namespace UniT.DI
     {
         #region Constructor
 
-        private readonly Dictionary<Type, HashSet<object>> cache = new();
+        private readonly Dictionary<Type, List<object>> cache = new();
 
         public DependencyContainer()
         {
@@ -36,9 +36,9 @@ namespace UniT.DI
 
         T IDependencyContainer.Resolve<T>() => this.Get<T>();
 
-        IEnumerable<object> IDependencyContainer.ResolveAll(Type type) => this.GetAll(type);
+        IReadOnlyList<object> IDependencyContainer.ResolveAll(Type type) => this.GetAll(type);
 
-        IEnumerable<T> IDependencyContainer.ResolveAll<T>() => this.GetAll<T>();
+        IReadOnlyList<T> IDependencyContainer.ResolveAll<T>() => this.GetAll<T>();
 
         object IDependencyContainer.Instantiate(Type type, params object?[] @params) => this.Instantiate(type, @params);
 
@@ -116,7 +116,7 @@ namespace UniT.DI
 
         public object Get(Type type)
         {
-            return this.TryGet(type, out var instance) ? instance : throw new ArgumentOutOfRangeException(nameof(type), type, $"No instance found for {type.Name}");
+            return this.TryGet(type, out var instance) ? instance : throw new KeyNotFoundException($"No instance found for {type.Name}");
         }
 
         public bool TryGet(Type type, [MaybeNullWhen(false)] out object instance)
@@ -130,9 +130,9 @@ namespace UniT.DI
             return false;
         }
 
-        public IEnumerable<object> GetAll(Type type)
+        public IReadOnlyList<object> GetAll(Type type)
         {
-            return this.cache.GetOrDefault(type) ?? Enumerable.Empty<object>();
+            return this.cache.GetOrDefault(type) ?? (IReadOnlyList<object>)Array.Empty<object>();
         }
 
         #endregion
@@ -155,7 +155,7 @@ namespace UniT.DI
         public object Invoke(object obj, string methodName, params object[] @params)
         {
             var method = obj.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                ?? throw new ArgumentOutOfRangeException(nameof(methodName), methodName, $"Method {methodName} not found on {obj.GetType().Name}");
+                ?? throw new ArgumentException($"Method {methodName} not found on {obj.GetType().Name}", nameof(methodName));
             return this.Invoke(obj, method, @params);
         }
 
@@ -163,54 +163,54 @@ namespace UniT.DI
 
         #region Resolve
 
-        private static readonly HashSet<Type> SupportedInterfaces = new() { typeof(IEnumerable<>), typeof(ICollection<>), typeof(IList<>), typeof(IReadOnlyCollection<>), typeof(IReadOnlyList<>) };
-
-        private static readonly HashSet<Type> SupportedConcreteTypes = new() { typeof(Collection<>), typeof(List<>), typeof(ReadOnlyCollection<>) };
-
         private object?[] ResolveParameters(ParameterInfo[] parameters, object?[] @params, string context)
         {
-            var usedParams = new bool[@params.Length];
-
-            return parameters.Select(parameter =>
+            return parameters.Select(static (parameter, state) =>
             {
+                var (@this, @params, context, isParamUsed) = state;
+
                 var parameterType = parameter.ParameterType;
+
                 for (var i = 0; i < @params.Length; ++i)
                 {
                     var param = @params[i];
-                    if (usedParams[i] || (param is not null && !parameterType.IsInstanceOfType(param))) continue;
-                    usedParams[i] = true;
+                    if (isParamUsed[i] || (param is not null && !parameterType.IsInstanceOfType(param))) continue;
+                    isParamUsed[i] = true;
                     return param;
                 }
-                switch (parameterType)
+
+                if (parameterType.IsArray)
                 {
-                    case { IsArray: true }:
+                    return @this.ResolveArray(parameterType.GetElementType()!);
+                }
+
+                if (parameterType.IsGenericType)
+                {
+                    var type = parameterType.GetGenericTypeDefinition();
+                    if (type == typeof(IEnumerable<>) || type == typeof(IReadOnlyList<>) || type == typeof(IReadOnlyCollection<>) || type == typeof(IList<>) || type == typeof(ICollection<>))
                     {
-                        return GetArray(parameterType.GetElementType()!);
+                        return @this.ResolveArray(parameterType.GetGenericArguments()[0]);
                     }
-                    case { IsGenericType: true, IsInterface: true } when SupportedInterfaces.Contains(parameterType.GetGenericTypeDefinition()):
+                    if (type == typeof(ReadOnlyCollection<>) || type == typeof(List<>) || type == typeof(HashSet<>) || type == typeof(Stack<>) || type == typeof(Queue<>) || type == typeof(Collection<>))
                     {
-                        return GetArray(parameterType.GetGenericArguments()[0]);
-                    }
-                    case { IsGenericType: true } when SupportedConcreteTypes.Contains(parameterType.GetGenericTypeDefinition()):
-                    {
-                        return Activator.CreateInstance(parameterType, GetArray(parameterType.GetGenericArguments()[0]));
-                    }
-                    default:
-                    {
-                        if (this.TryGet(parameterType, out var instance)) return instance;
-                        if (parameter.HasDefaultValue) return parameter.DefaultValue;
-                        throw new InvalidOperationException($"Cannot resolve {parameterType.Name} for {parameter.Name} while {context}");
+                        return Activator.CreateInstance(parameterType, @this.ResolveArray(parameterType.GetGenericArguments()[0]));
                     }
                 }
-            }).ToArray();
 
-            Array GetArray(Type type)
-            {
-                var instances = this.GetAll(type).ToArray();
-                var array     = Array.CreateInstance(type, instances.Length);
-                instances.CopyTo(array, 0);
-                return array;
-            }
+                if (@this.TryGet(parameterType, out var instance)) return instance;
+
+                if (parameter.HasDefaultValue) return parameter.DefaultValue;
+
+                throw new InvalidOperationException($"Cannot resolve {parameterType.Name} for {parameter.Name} while {context}");
+            }, (@this: this, @params, context, isParamUsed: new bool[@params.Length])).ToArray();
+        }
+
+        private Array ResolveArray(Type type)
+        {
+            var instances = this.GetAll(type).ToArray();
+            var array     = Array.CreateInstance(type, instances.Length);
+            instances.CopyTo(array, 0);
+            return array;
         }
 
         #endregion
@@ -248,7 +248,7 @@ namespace UniT.DI
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public IEnumerable<T> GetAll<T>() where T : notnull => this.GetAll(typeof(T)).Cast<T>();
+        public IReadOnlyList<T> GetAll<T>() where T : notnull => this.GetAll(typeof(T)).Cast<T>().ToArray();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public T Instantiate<T>(params object?[] @params) where T : notnull => (T)this.Instantiate(typeof(T), @params);
@@ -351,7 +351,7 @@ namespace UniT.DI
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static T LoadResource<T>(string path) where T : Object
         {
-            return Resources.Load<T>(path).NullIfDestroyed() ?? throw new ArgumentOutOfRangeException(nameof(path), path, $"{path} not found in resources");
+            return Resources.Load<T>(path).NullIfDestroyed() ?? throw new KeyNotFoundException($"{path} not found in Resources");
         }
 
         #endregion

@@ -16,9 +16,9 @@ namespace UniT.DI
 
         public T Resolve<T>() where T : notnull;
 
-        public IEnumerable<object> ResolveAll(Type type);
+        public IReadOnlyList<object> ResolveAll(Type type);
 
-        public IEnumerable<T> ResolveAll<T>() where T : notnull;
+        public IReadOnlyList<T> ResolveAll<T>() where T : notnull;
 
         public object Instantiate(Type type, params object?[] @params);
 

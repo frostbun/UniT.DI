@@ -49,9 +49,9 @@ namespace Zenject
 
             T IDependencyContainer.Resolve<T>() => this.container.Resolve<T>();
 
-            IEnumerable<object> IDependencyContainer.ResolveAll(Type type) => this.container.ResolveAll(type).Cast<object>();
+            IReadOnlyList<object> IDependencyContainer.ResolveAll(Type type) => this.container.ResolveAll(type).Cast<object>().ToArray();
 
-            IEnumerable<T> IDependencyContainer.ResolveAll<T>() => this.container.ResolveAll<T>();
+            IReadOnlyList<T> IDependencyContainer.ResolveAll<T>() => this.container.ResolveAll<T>();
 
             object IDependencyContainer.Instantiate(Type type, params object?[] @params) => this.container.Instantiate(type, @params);
 
